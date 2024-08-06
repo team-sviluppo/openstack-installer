@@ -18,7 +18,7 @@
 #   - ``PUBLIC_NETWORK_NAME``
 #   - ``VIRT_DRIVER``
 #   - ``LIBVIRT_TYPE``
-#   - ``KEYSTONE_SERVICE_URI``, ``KEYSTONE_SERVICE_URI_V3`` from lib/keystone
+#   - ``KEYSTONE_SERVICE_URI_V3`` from lib/keystone
 #
 # Optional Dependencies:
 #
@@ -101,6 +101,9 @@ TEMPEST_USE_TEST_ACCOUNTS=$(trueorfalse False TEMPEST_USE_TEST_ACCOUNTS)
 # same variable that devstack-gate uses to specify the number of workers that
 # it will run tempest with
 TEMPEST_CONCURRENCY=${TEMPEST_CONCURRENCY:-$(nproc)}
+
+TEMPEST_FLAVOR_RAM=${TEMPEST_FLAVOR_RAM:-192}
+TEMPEST_FLAVOR_ALT_RAM=${TEMPEST_FLAVOR_ALT_RAM:-256}
 
 # Functions
 # ---------
@@ -295,13 +298,15 @@ function configure_tempest {
             if [[ ! ( $available_flavors =~ 'm1.nano' ) ]]; then
                 # Determine the flavor disk size based on the image size.
                 disk=$(image_size_in_gib $image_uuid)
-                openstack --os-cloud devstack-admin flavor create --id 42 --ram 128 --disk $disk --vcpus 1 --property hw_rng:allowed=True m1.nano
+                ram=${TEMPEST_FLAVOR_RAM}
+                openstack --os-cloud devstack-admin flavor create --id 42 --ram ${ram} --disk $disk --vcpus 1 --property hw_rng:allowed=True m1.nano
             fi
             flavor_ref=42
             if [[ ! ( $available_flavors =~ 'm1.micro' ) ]]; then
                 # Determine the alt flavor disk size based on the alt image size.
                 disk=$(image_size_in_gib $image_uuid_alt)
-                openstack --os-cloud devstack-admin flavor create --id 84 --ram 192 --disk $disk --vcpus 1 --property hw_rng:allowed=True m1.micro
+                ram=${TEMPEST_FLAVOR_ALT_RAM}
+                openstack --os-cloud devstack-admin flavor create --id 84 --ram ${ram} --disk $disk --vcpus 1 --property hw_rng:allowed=True m1.micro
             fi
             flavor_ref_alt=84
         else
@@ -381,7 +386,6 @@ function configure_tempest {
     iniset $TEMPEST_CONFIG volume build_timeout $BUILD_TIMEOUT
 
     # Identity
-    iniset $TEMPEST_CONFIG identity uri "$KEYSTONE_SERVICE_URI/v2.0/"
     iniset $TEMPEST_CONFIG identity uri_v3 "$KEYSTONE_SERVICE_URI_V3"
     iniset $TEMPEST_CONFIG identity user_lockout_failure_attempts $KEYSTONE_LOCKOUT_FAILURE_ATTEMPTS
     iniset $TEMPEST_CONFIG identity user_lockout_duration $KEYSTONE_LOCKOUT_DURATION
@@ -392,19 +396,7 @@ function configure_tempest {
         iniset $TEMPEST_CONFIG auth admin_project_name $admin_project_name
         iniset $TEMPEST_CONFIG auth admin_domain_name $admin_domain_name
     fi
-    if [ "$ENABLE_IDENTITY_V2" == "True" ]; then
-        # Run Identity API v2 tests ONLY if needed
-        iniset $TEMPEST_CONFIG identity-feature-enabled api_v2 True
-    else
-        # Skip Identity API v2 tests by default
-        iniset $TEMPEST_CONFIG identity-feature-enabled api_v2 False
-    fi
     iniset $TEMPEST_CONFIG identity auth_version ${TEMPEST_AUTH_VERSION:-v3}
-    if [[ "$TEMPEST_AUTH_VERSION" != "v2" ]]; then
-        # we're going to disable v2 admin unless we're using v2 by default.
-        iniset $TEMPEST_CONFIG identity-feature-enabled api_v2_admin False
-    fi
-
     if is_service_enabled tls-proxy; then
         iniset $TEMPEST_CONFIG identity ca_certificates_file $SSL_BUNDLE_FILE
     fi
